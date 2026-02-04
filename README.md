@@ -66,9 +66,11 @@ You should see output like:
 
 ### iOS Notes
 
-- **iOS 12.2+**: Enable 'Settings > Safari > Motion and Orientation access'
-- **iOS 13+**: You must grant permission when prompted
-- If permission isn't working, try restarting Safari
+- **iOS 12.2+**: Enable 'Settings > Safari > Motion & Orientation Access'
+- **iOS 13+**: You must grant permission when prompted by the browser
+- **HTTPS Required**: iOS 13+ requires HTTPS for motion permissions (localhost works over HTTP)
+- **Permission Denied?**: The app provides clear instructions on how to fix permission issues
+- If permission isn't working, check Settings → Safari → Motion & Orientation Access, then reload the page
 
 ## 🎮 CEMU Configuration
 
