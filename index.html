@@ -299,12 +299,17 @@
             </div>
         </div>
 
-        <div class="card info-box">
+        <div class="card info-box" id="infoBox">
             <strong>📱 Instructions:</strong>
             1. Tap "Enable Motion Sensors"<br>
             2. Grant permission when prompted<br>
             3. Keep your phone screen on<br>
             4. Move your phone to control!
+        </div>
+
+        <div class="card info-box" id="warningBox" style="display: none; background: rgba(255, 100, 100, 0.2); border-left-color: #ff6b6b;">
+            <strong>⚠️ Warning:</strong>
+            <span id="warningText"></span>
         </div>
 
         <div class="footer">
@@ -330,6 +335,31 @@
         const sensitivityValue = document.getElementById('sensitivityValue');
         const requestPermissionBtn = document.getElementById('requestPermission');
         const visualizerBall = document.getElementById('visualizerBall');
+        const warningBox = document.getElementById('warningBox');
+        const warningText = document.getElementById('warningText');
+
+        // Check for iOS and secure context
+        function checkEnvironment() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            const isSecure = window.isSecureContext || location.protocol === 'https:';
+            
+            // Show warning if on iOS and not secure context
+            if (isIOS && !isSecure && typeof DeviceMotionEvent.requestPermission === 'function') {
+                warningBox.style.display = 'block';
+                warningText.textContent = 'Motion sensors require HTTPS on iOS 13+. This may not work over HTTP. Consider using HTTPS or localhost.';
+            }
+            
+            // For iOS 13+, check if we can detect permission state
+            // Try to see if DeviceMotionEvent works without requesting permission first
+            // This handles the case where permission was previously granted
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                // We can't check permission state directly, but we can add a note
+                const infoBox = document.getElementById('infoBox');
+                if (isIOS) {
+                    infoBox.innerHTML += '<br><br><strong>iOS Users:</strong> If permission fails, check Settings → Safari → Motion & Orientation Access';
+                }
+            }
+        }
 
         // Connect to server
         function connect() {
@@ -376,11 +406,34 @@
                     if (permission === 'granted') {
                         startMotionTracking();
                     } else {
-                        alert('Motion permission denied');
+                        // Permission denied - provide clear guidance
+                        alert('Motion & Orientation Access Denied\n\n' +
+                              'To use motion controls:\n' +
+                              '1. Open iOS Settings\n' +
+                              '2. Scroll down and tap Safari\n' +
+                              '3. Enable "Motion & Orientation Access"\n' +
+                              '4. Reload this page and try again');
+                        requestPermissionBtn.textContent = 'Permission Denied - Retry';
+                        requestPermissionBtn.classList.remove('primary');
                     }
                 } catch (error) {
                     console.error('Error requesting motion permission:', error);
-                    alert('Error requesting permission: ' + error.message);
+                    // Provide specific error guidance
+                    let errorMsg = 'Error requesting motion permission.\n\n';
+                    if (error.name === 'NotAllowedError') {
+                        errorMsg += 'Permission was denied. Please check Safari settings:\n' +
+                                   '1. Settings → Safari → Motion & Orientation Access\n' +
+                                   '2. Enable the setting\n' +
+                                   '3. Reload and try again';
+                    } else if (error.message.includes('secure context')) {
+                        errorMsg += 'This feature requires HTTPS.\n' +
+                                   'Please access this page using https:// instead of http://';
+                    } else {
+                        errorMsg += error.message;
+                    }
+                    alert(errorMsg);
+                    requestPermissionBtn.textContent = 'Error - Retry';
+                    requestPermissionBtn.classList.remove('primary');
                 }
             } else {
                 // Non-iOS or older iOS
@@ -395,6 +448,8 @@
             isStreaming = true;
             requestPermissionBtn.textContent = '✓ Motion Enabled';
             requestPermissionBtn.style.opacity = '0.7';
+            requestPermissionBtn.disabled = true;
+            requestPermissionBtn.style.cursor = 'not-allowed';
             
             // Keep screen awake
             if ('wakeLock' in navigator) {
@@ -444,6 +499,9 @@
 
         // Initialize connection
         connect();
+        
+        // Check environment on load
+        checkEnvironment();
     </script>
 </body>
 </html>
