@@ -1,10 +1,11 @@
 {
   "name": "cemuhook-mac",
   "version": "2.0.0",
-  "description": "WebGyro for CEMUhook with Mac support and multi-client capability",
+  "description": "WebGyro for CEMUhook with Mac support, multi-client capability, and SSL/HTTPS support",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "start:ssl": "node app.js --ssl"
   },
   "keywords": [
     "ios",
@@ -13,11 +14,15 @@
     "cemuhook",
     "cemu",
     "websocket",
-    "mac"
+    "mac",
+    "ssl",
+    "https",
+    "letsencrypt"
   ],
   "author": "stepanskur (based on hjmmc/WebGyroForCemuhook)",
   "license": "MIT",
   "dependencies": {
-    "socket.io": "^4.6.1"
+    "socket.io": "^4.6.1",
+    "acme-client": "^5.0.0"
   }
 }
