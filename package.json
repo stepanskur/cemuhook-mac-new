@@ -1,0 +1,23 @@
+{
+  "name": "cemuhook-mac",
+  "version": "2.0.0",
+  "description": "WebGyro for CEMUhook with Mac support and multi-client capability",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "keywords": [
+    "ios",
+    "android",
+    "gyro",
+    "cemuhook",
+    "cemu",
+    "websocket",
+    "mac"
+  ],
+  "author": "stepanskur (based on hjmmc/WebGyroForCemuhook)",
+  "license": "MIT",
+  "dependencies": {
+    "socket.io": "^4.6.1"
+  }
+}
