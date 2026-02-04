@@ -7,6 +7,22 @@ npm install
 npm start
 ```
 
+## SSL/HTTPS Mode (Optional)
+
+For remote access and iOS 13+ support:
+
+```bash
+# Set up SSL with Let's Encrypt
+export USE_SSL=true
+export SSL_EMAIL=your-email@example.com
+export SSL_DOMAIN=yourdomain.com
+export HTTP_PORT=80
+export HTTPS_PORT=443
+sudo -E npm start
+```
+
+See [SSL_SETUP.md](SSL_SETUP.md) for detailed SSL configuration.
+
 ## Connect Your Phone
 
 1. Make sure your phone and Mac are on the same WiFi network

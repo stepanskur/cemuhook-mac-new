@@ -1,7 +1,9 @@
 const dgram = require("dgram");
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const acme = require("acme-client");
 
 // CEMUhook protocol constants
 const maxProtocolVer = 1001;
@@ -16,6 +18,14 @@ const MessageType = {
 
 const serverID = Math.floor(Math.random() * 4294967295);
 console.log(`Server ID: ${serverID}`);
+
+// SSL Configuration from environment variables or command line args
+const USE_SSL = process.env.USE_SSL === 'true' || process.argv.includes('--ssl');
+const SSL_EMAIL = process.env.SSL_EMAIL || '';
+const SSL_DOMAIN = process.env.SSL_DOMAIN || '';
+const CERT_DIR = process.env.CERT_DIR || path.join(__dirname, 'certificates');
+const HTTP_PORT = parseInt(process.env.HTTP_PORT || '8080');
+const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || '8443');
 
 // Multi-client support
 const clients = new Map(); // Map of slot -> { socket, lastData, lastUpdate }
@@ -93,6 +103,102 @@ function SendPacket(client, data) {
       }
     }
   );
+}
+
+// Let's Encrypt certificate functions
+async function getCertificate() {
+  if (!SSL_EMAIL || !SSL_DOMAIN) {
+    throw new Error('SSL_EMAIL and SSL_DOMAIN environment variables must be set for SSL mode');
+  }
+
+  // Create certificate directory if it doesn't exist
+  if (!fs.existsSync(CERT_DIR)) {
+    fs.mkdirSync(CERT_DIR, { recursive: true });
+  }
+
+  const accountKeyPath = path.join(CERT_DIR, 'account.key');
+  const certKeyPath = path.join(CERT_DIR, 'cert.key');
+  const certPath = path.join(CERT_DIR, 'cert.pem');
+  const chainPath = path.join(CERT_DIR, 'chain.pem');
+
+  // Check if we already have valid certificates
+  if (fs.existsSync(certPath) && fs.existsSync(certKeyPath)) {
+    try {
+      const certData = fs.readFileSync(certPath, 'utf8');
+      const cert = await acme.crypto.readCertificateInfo(certData);
+      const now = new Date();
+      const expiryDate = new Date(cert.notAfter);
+      const daysUntilExpiry = (expiryDate - now) / (1000 * 60 * 60 * 24);
+      
+      if (daysUntilExpiry > 30) {
+        console.log(`✓ Using existing certificate (expires in ${Math.floor(daysUntilExpiry)} days)`);
+        return {
+          key: fs.readFileSync(certKeyPath),
+          cert: fs.readFileSync(certPath),
+          ca: fs.existsSync(chainPath) ? fs.readFileSync(chainPath) : undefined
+        };
+      } else {
+        console.log(`⚠ Certificate expires in ${Math.floor(daysUntilExpiry)} days, renewing...`);
+      }
+    } catch (err) {
+      console.log('⚠ Error reading existing certificate, will obtain new one:', err.message);
+    }
+  }
+
+  console.log('📜 Obtaining Let\'s Encrypt certificate...');
+  
+  // Create or load account key
+  let accountKey;
+  if (fs.existsSync(accountKeyPath)) {
+    accountKey = fs.readFileSync(accountKeyPath);
+  } else {
+    accountKey = await acme.crypto.createPrivateKey();
+    fs.writeFileSync(accountKeyPath, accountKey);
+    console.log('✓ Created account key');
+  }
+
+  // Create ACME client
+  const client = new acme.Client({
+    directoryUrl: acme.directory.letsencrypt.production,
+    accountKey: accountKey
+  });
+
+  // Create certificate key
+  const [certKey, certCsr] = await acme.crypto.createCsr({
+    commonName: SSL_DOMAIN
+  });
+  fs.writeFileSync(certKeyPath, certKey);
+
+  // Complete ACME challenge and get certificate
+  const cert = await client.auto({
+    csr: certCsr,
+    email: SSL_EMAIL,
+    termsOfServiceAgreed: true,
+    challengeCreateFn: async (authz, challenge, keyAuthorization) => {
+      console.log(`Challenge created for ${authz.identifier.value}`);
+      if (challenge.type === 'http-01') {
+        // Store challenge for HTTP server to serve
+        global.acmeChallenge = {
+          token: challenge.token,
+          keyAuthorization: keyAuthorization
+        };
+        console.log(`HTTP challenge ready: /.well-known/acme-challenge/${challenge.token}`);
+      }
+    },
+    challengeRemoveFn: async (authz, challenge, keyAuthorization) => {
+      console.log(`Challenge completed for ${authz.identifier.value}`);
+      delete global.acmeChallenge;
+    }
+  });
+
+  // Save certificate
+  fs.writeFileSync(certPath, cert);
+  console.log('✓ Certificate obtained and saved');
+
+  return {
+    key: certKey,
+    cert: cert
+  };
 }
 
 // Create UDP server for CEMUhook protocol
@@ -306,8 +412,23 @@ function Report(slot, motionTimestamp, accelerometer, gyro) {
 
 udpServer.bind(26760);
 
-// Create HTTP server
-const httpServer = http.createServer((request, response) => {
+// Create HTTP server request handler
+function handleRequest(request, response) {
+  // Handle ACME challenge for Let's Encrypt
+  if (request.url.startsWith('/.well-known/acme-challenge/')) {
+    if (global.acmeChallenge) {
+      const token = request.url.split('/').pop();
+      if (token === global.acmeChallenge.token) {
+        response.writeHead(200, { 'Content-Type': 'text/plain' });
+        response.end(global.acmeChallenge.keyAuthorization);
+        return;
+      }
+    }
+    response.writeHead(404);
+    response.end('Not found');
+    return;
+  }
+
   if (request.url === '/api/clients') {
     // API endpoint for getting connected clients info
     const clientsInfo = [];
@@ -333,7 +454,10 @@ const httpServer = http.createServer((request, response) => {
     response.writeHead(200, { "Content-Type": "text/html" });
     response.end(data);
   });
-});
+}
+
+// Create HTTP server
+const httpServer = http.createServer(handleRequest);
 
 // Get local IP addresses
 function getLocalIPs() {
@@ -350,91 +474,144 @@ function getLocalIPs() {
   return ips;
 }
 
-httpServer.listen(8080, () => {
-  console.log("\n" + "=".repeat(50));
-  console.log("  CEMUhook Motion Server v2.0 (Mac Edition)");
-  console.log("=".repeat(50));
-  console.log("\n📱 Connect your phone to:");
-  const ips = getLocalIPs();
-  ips.forEach(ip => {
-    console.log(`   http://${ip}:8080`);
-  });
-  console.log("\n🎮 Configure CEMU:");
-  console.log("   Options → GamePad motion source → DSU1 → ServerIP: localhost");
-  console.log("   Port: 26760 (default)");
-  console.log("\n💡 Supports up to 4 simultaneous phone connections!");
-  console.log("=".repeat(50) + "\n");
-});
+// Main async function to start servers
+async function startServers() {
+  let mainServer = httpServer;
+  let httpsServer = null;
 
-// Setup Socket.IO for WebSocket connections
-const io = require('socket.io')(httpServer, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+  // Start HTTP server (always needed for ACME challenges if using SSL)
+  if (USE_SSL) {
+    // Start HTTP server on port 80 or HTTP_PORT for ACME challenges
+    httpServer.listen(HTTP_PORT, () => {
+      console.log(`✓ HTTP server listening on port ${HTTP_PORT} (for ACME challenges)`);
+    });
 
-io.on("connection", (socket) => {
-  console.log(`📱 New phone connected: ${socket.id}`);
-  
-  // Find available slot
-  let assignedSlot = -1;
-  for (let i = 0; i < maxSlots; i++) {
-    const client = clients.get(i);
-    if (!client || Date.now() - client.lastUpdate > 10000) {
-      assignedSlot = i;
-      break;
+    try {
+      // Get SSL certificate
+      const credentials = await getCertificate();
+      
+      // Create HTTPS server
+      httpsServer = https.createServer(credentials, handleRequest);
+      mainServer = httpsServer;
+
+      httpsServer.listen(HTTPS_PORT, () => {
+        console.log("\n" + "=".repeat(50));
+        console.log("  CEMUhook Motion Server v2.0 (Mac Edition) - SSL");
+        console.log("=".repeat(50));
+        console.log("\n📱 Connect your phone to:");
+        console.log(`   https://${SSL_DOMAIN}:${HTTPS_PORT}`);
+        const ips = getLocalIPs();
+        ips.forEach(ip => {
+          console.log(`   https://${ip}:${HTTPS_PORT}`);
+        });
+        console.log("\n🎮 Configure CEMU:");
+        console.log("   Options → GamePad motion source → DSU1 → ServerIP: localhost");
+        console.log("   Port: 26760 (default)");
+        console.log("\n💡 Supports up to 4 simultaneous phone connections!");
+        console.log("=".repeat(50) + "\n");
+      });
+    } catch (err) {
+      console.error('❌ Failed to setup SSL:', err.message);
+      console.error('Falling back to HTTP mode...');
+      USE_SSL = false;
     }
   }
   
-  if (assignedSlot === -1) {
-    console.log(`❌ No available slots for ${socket.id}`);
-    socket.emit("error", { message: "No available slots (max 4 clients)" });
-    socket.disconnect();
-    return;
+  if (!USE_SSL) {
+    httpServer.listen(HTTP_PORT, () => {
+      console.log("\n" + "=".repeat(50));
+      console.log("  CEMUhook Motion Server v2.0 (Mac Edition)");
+      console.log("=".repeat(50));
+      console.log("\n📱 Connect your phone to:");
+      const ips = getLocalIPs();
+      ips.forEach(ip => {
+        console.log(`   http://${ip}:${HTTP_PORT}`);
+      });
+      console.log("\n🎮 Configure CEMU:");
+      console.log("   Options → GamePad motion source → DSU1 → ServerIP: localhost");
+      console.log("   Port: 26760 (default)");
+      console.log("\n💡 Supports up to 4 simultaneous phone connections!");
+      console.log("=".repeat(50) + "\n");
+    });
   }
-  
-  console.log(`✓ Assigned slot ${assignedSlot} to ${socket.id}`);
-  
-  clients.set(assignedSlot, {
-    socket: socket,
-    lastUpdate: Date.now(),
-    lastData: null,
-    packetCounter: 0
-  });
-  
-  socket.emit("assigned", { slot: assignedSlot });
-  
-  socket.on("motion", (data) => {
-    const client = clients.get(assignedSlot);
-    if (!client) return;
-    
-    client.lastUpdate = Date.now();
-    client.lastData = data;
-    
-    // Send motion data to CEMUhook
-    Report(
-      assignedSlot,
-      data.timestamp * 1000, // Convert to microseconds
-      { x: 0, y: 0, z: 0 }, // Accelerometer (not used for now)
-      data.gyro
-    );
-  });
-  
-  socket.on("disconnect", () => {
-    console.log(`📱 Phone disconnected from slot ${assignedSlot}: ${socket.id}`);
-    clients.delete(assignedSlot);
-  });
-});
 
-// Graceful shutdown
-process.on("SIGINT", () => {
-  console.log("\n\nShutting down server...");
-  udpServer.close();
-  httpServer.close();
-  process.exit(0);
-});
+  // Setup Socket.IO for WebSocket connections on the main server
+  const io = require('socket.io')(mainServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
 
-process.on("uncaughtException", (err) => {
-  console.error("Uncaught exception:", err);
+  io.on("connection", (socket) => {
+    console.log(`📱 New phone connected: ${socket.id}`);
+    
+    // Find available slot
+    let assignedSlot = -1;
+    for (let i = 0; i < maxSlots; i++) {
+      const client = clients.get(i);
+      if (!client || Date.now() - client.lastUpdate > 10000) {
+        assignedSlot = i;
+        break;
+      }
+    }
+    
+    if (assignedSlot === -1) {
+      console.log(`❌ No available slots for ${socket.id}`);
+      socket.emit("error", { message: "No available slots (max 4 clients)" });
+      socket.disconnect();
+      return;
+    }
+    
+    console.log(`✓ Assigned slot ${assignedSlot} to ${socket.id}`);
+    
+    clients.set(assignedSlot, {
+      socket: socket,
+      lastUpdate: Date.now(),
+      lastData: null,
+      packetCounter: 0
+    });
+    
+    socket.emit("assigned", { slot: assignedSlot });
+    
+    socket.on("motion", (data) => {
+      const client = clients.get(assignedSlot);
+      if (!client) return;
+      
+      client.lastUpdate = Date.now();
+      client.lastData = data;
+      
+      // Send motion data to CEMUhook
+      Report(
+        assignedSlot,
+        data.timestamp * 1000, // Convert to microseconds
+        { x: 0, y: 0, z: 0 }, // Accelerometer (not used for now)
+        data.gyro
+      );
+    });
+    
+    socket.on("disconnect", () => {
+      console.log(`📱 Phone disconnected from slot ${assignedSlot}: ${socket.id}`);
+      clients.delete(assignedSlot);
+    });
+  });
+
+  // Graceful shutdown
+  process.on("SIGINT", () => {
+    console.log("\n\nShutting down server...");
+    udpServer.close();
+    httpServer.close();
+    if (httpsServer) httpsServer.close();
+    process.exit(0);
+  });
+
+  process.on("uncaughtException", (err) => {
+    console.error("Uncaught exception:", err);
+  });
+}
+
+// Start the servers
+startServers().catch(err => {
+  console.error('Failed to start servers:', err);
+  process.exit(1);
 });

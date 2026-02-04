@@ -6,6 +6,7 @@ A modern, multi-client motion controller server for CEMU emulator. Use your phon
 
 - 🍎 **Mac Compatible** - Works seamlessly on macOS
 - 👥 **Multi-Client Support** - Connect up to 4 phones simultaneously
+- 🔒 **SSL/HTTPS Support** - Let's Encrypt certificates for public IP addresses
 - 🎨 **Beautiful Web Interface** - Modern, responsive design
 - 🚀 **No Build Required** - Pure Node.js, runs directly
 - 📱 **iOS & Android Support** - Works with any modern mobile browser
@@ -69,8 +70,31 @@ You should see output like:
 - **iOS 12.2+**: Enable 'Settings > Safari > Motion & Orientation Access'
 - **iOS 13+**: You must grant permission when prompted by the browser
 - **HTTPS Required**: iOS 13+ requires HTTPS for motion permissions (localhost works over HTTP)
+- **Remote Access**: For remote access, see [SSL/HTTPS Setup Guide](SSL_SETUP.md) to enable SSL with Let's Encrypt
 - **Permission Denied?**: The app provides clear instructions on how to fix permission issues
 - If permission isn't working, check Settings → Safari → Motion & Orientation Access, then reload the page
+
+## 🔒 SSL/HTTPS Setup
+
+For remote access and iOS 13+ support over the internet, you can enable SSL/HTTPS with Let's Encrypt certificates:
+
+```bash
+# Quick SSL setup
+export USE_SSL=true
+export SSL_EMAIL=your-email@example.com
+export SSL_DOMAIN=yourdomain.com  # or your public IP
+export HTTP_PORT=80
+export HTTPS_PORT=443
+sudo -E node app.js
+```
+
+📖 **See [SSL_SETUP.md](SSL_SETUP.md) for complete SSL configuration guide**
+
+This enables:
+- ✅ HTTPS access from anywhere on the internet
+- ✅ iOS 13+ motion sensor support remotely
+- ✅ Automatic certificate renewal
+- ✅ Secure encrypted connections
 
 ## 🎮 CEMU Configuration
 
