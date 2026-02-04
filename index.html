@@ -275,11 +275,11 @@
                     <div class="gyro-axis-value" id="gyroX">0.00</div>
                 </div>
                 <div class="gyro-axis">
-                    <div class="gyro-axis-label">Y (Yaw)</div>
+                    <div class="gyro-axis-label">Y (Roll)</div>
                     <div class="gyro-axis-value" id="gyroY">0.00</div>
                 </div>
                 <div class="gyro-axis">
-                    <div class="gyro-axis-label">Z (Roll)</div>
+                    <div class="gyro-axis-label">Z (Yaw)</div>
                     <div class="gyro-axis-value" id="gyroZ">0.00</div>
                 </div>
             </div>
@@ -410,11 +410,14 @@
             const rotationRate = event.rotationRate;
             if (!rotationRate) return;
 
-            // Apply sensitivity
+            // Map rotation rate to gyro axes correctly:
+            // rotationRate.alpha = rotation around Z axis (Yaw)
+            // rotationRate.beta = rotation around X axis (Pitch) 
+            // rotationRate.gamma = rotation around Y axis (Roll)
             const gyro = {
-                x: (rotationRate.beta || 0) * sensitivity,
-                y: (rotationRate.alpha || 0) * sensitivity,
-                z: (rotationRate.gamma || 0) * sensitivity
+                x: (rotationRate.beta || 0) * sensitivity,   // Pitch
+                y: (rotationRate.gamma || 0) * sensitivity,  // Roll
+                z: (rotationRate.alpha || 0) * sensitivity   // Yaw
             };
 
             // Update display
@@ -422,9 +425,9 @@
             gyroY.textContent = gyro.y.toFixed(2);
             gyroZ.textContent = gyro.z.toFixed(2);
 
-            // Update visualizer
+            // Update visualizer (Y=horizontal, X=vertical)
             const maxOffset = 80;
-            const xPos = Math.max(-maxOffset, Math.min(maxOffset, gyro.z * 2));
+            const xPos = Math.max(-maxOffset, Math.min(maxOffset, gyro.y * 2));
             const yPos = Math.max(-maxOffset, Math.min(maxOffset, gyro.x * 2));
             visualizerBall.style.transform = `translate(calc(-50% + ${xPos}px), calc(-50% + ${yPos}px))`;
 
@@ -441,13 +444,6 @@
 
         // Initialize connection
         connect();
-
-        // Prevent screen from sleeping (visual reminder)
-        setInterval(() => {
-            if (isStreaming) {
-                document.body.style.backgroundColor = document.body.style.backgroundColor === '' ? 'transparent' : '';
-            }
-        }, 60000);
     </script>
 </body>
 </html>

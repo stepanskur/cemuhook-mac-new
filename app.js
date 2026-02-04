@@ -1,9 +1,7 @@
 const dgram = require("dgram");
 const http = require("http");
-const https = require("https");
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
 
 // CEMUhook protocol constants
 const maxProtocolVer = 1001;
@@ -336,15 +334,6 @@ const httpServer = http.createServer((request, response) => {
     response.end(data);
   });
 });
-
-// Generate self-signed certificate for HTTPS
-function generateSelfSignedCert() {
-  const pki = require('crypto');
-  
-  // For simplicity, we'll just return null and use HTTP only
-  // In production, you'd want proper certificates
-  return null;
-}
 
 // Get local IP addresses
 function getLocalIPs() {
