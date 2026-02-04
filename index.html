@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CEMUhook Motion Controller</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 0.95rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ff4444;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #44ff44;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .slot-badge {
+            background: rgba(255, 255, 255, 0.3);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .gyro-data {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .gyro-axis {
+            text-align: center;
+        }
+
+        .gyro-axis-label {
+            font-size: 0.85rem;
+            opacity: 0.8;
+            margin-bottom: 5px;
+            font-weight: 600;
+        }
+
+        .gyro-axis-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .control-group label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            opacity: 0.9;
+        }
+
+        .slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.3);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        .button {
+            background: rgba(255, 255, 255, 0.25);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .button:active {
+            transform: scale(0.95);
+            background: rgba(255, 255, 255, 0.35);
+        }
+
+        .button.primary {
+            background: rgba(255, 255, 255, 0.9);
+            color: #667eea;
+        }
+
+        .info-box {
+            background: rgba(255, 255, 255, 0.1);
+            border-left: 4px solid rgba(255, 255, 255, 0.5);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .visualizer {
+            width: 100%;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .visualizer-ball {
+            width: 30px;
+            height: 30px;
+            background: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+            transition: all 0.05s ease-out;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            opacity: 0.8;
+            font-size: 0.85rem;
+        }
+
+        .value-display {
+            display: inline-block;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .gyro-axis-value {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Motion Controller</h1>
+            <p>Use your phone as a gyroscope for CEMU</p>
+        </div>
+
+        <div class="card">
+            <div class="status">
+                <div class="status-indicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Disconnected</span>
+                </div>
+                <div class="slot-badge" id="slotBadge">Slot: -</div>
+            </div>
+
+            <div class="visualizer">
+                <div class="visualizer-ball" id="visualizerBall"></div>
+            </div>
+
+            <div class="gyro-data">
+                <div class="gyro-axis">
+                    <div class="gyro-axis-label">X (Pitch)</div>
+                    <div class="gyro-axis-value" id="gyroX">0.00</div>
+                </div>
+                <div class="gyro-axis">
+                    <div class="gyro-axis-label">Y (Roll)</div>
+                    <div class="gyro-axis-value" id="gyroY">0.00</div>
+                </div>
+                <div class="gyro-axis">
+                    <div class="gyro-axis-label">Z (Yaw)</div>
+                    <div class="gyro-axis-value" id="gyroZ">0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="controls">
+                <div class="control-group">
+                    <label>
+                        Sensitivity: <span class="value-display" id="sensitivityValue">1.0</span>
+                    </label>
+                    <input type="range" class="slider" id="sensitivity" min="0.1" max="5" step="0.1" value="1.0">
+                </div>
+                <button class="button primary" id="requestPermission">
+                    Enable Motion Sensors
+                </button>
+            </div>
+        </div>
+
+        <div class="card info-box">
+            <strong>📱 Instructions:</strong>
+            1. Tap "Enable Motion Sensors"<br>
+            2. Grant permission when prompted<br>
+            3. Keep your phone screen on<br>
+            4. Move your phone to control!
+        </div>
+
+        <div class="footer">
+            <p>CEMUhook Motion Server v2.0</p>
+            <p>Supports up to 4 simultaneous connections</p>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket;
+        let sensitivity = 1.0;
+        let assignedSlot = -1;
+        let isStreaming = false;
+
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const slotBadge = document.getElementById('slotBadge');
+        const gyroX = document.getElementById('gyroX');
+        const gyroY = document.getElementById('gyroY');
+        const gyroZ = document.getElementById('gyroZ');
+        const sensitivitySlider = document.getElementById('sensitivity');
+        const sensitivityValue = document.getElementById('sensitivityValue');
+        const requestPermissionBtn = document.getElementById('requestPermission');
+        const visualizerBall = document.getElementById('visualizerBall');
+
+        // Connect to server
+        function connect() {
+            socket = io();
+
+            socket.on('connect', () => {
+                updateStatus('connected', 'Connected');
+            });
+
+            socket.on('disconnect', () => {
+                updateStatus('disconnected', 'Disconnected');
+                assignedSlot = -1;
+                slotBadge.textContent = 'Slot: -';
+            });
+
+            socket.on('assigned', (data) => {
+                assignedSlot = data.slot;
+                slotBadge.textContent = `Slot: ${assignedSlot + 1}`;
+                console.log(`Assigned to slot ${assignedSlot}`);
+            });
+
+            socket.on('error', (data) => {
+                alert(data.message);
+            });
+        }
+
+        function updateStatus(status, text) {
+            statusDot.className = 'status-dot' + (status === 'connected' ? ' connected' : '');
+            statusText.textContent = text;
+        }
+
+        // Sensitivity control
+        sensitivitySlider.addEventListener('input', (e) => {
+            sensitivity = parseFloat(e.target.value);
+            sensitivityValue.textContent = sensitivity.toFixed(1);
+        });
+
+        // Request motion permission
+        requestPermissionBtn.addEventListener('click', async () => {
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                // iOS 13+ requires permission
+                try {
+                    const permission = await DeviceMotionEvent.requestPermission();
+                    if (permission === 'granted') {
+                        startMotionTracking();
+                    } else {
+                        alert('Motion permission denied');
+                    }
+                } catch (error) {
+                    console.error('Error requesting motion permission:', error);
+                    alert('Error requesting permission: ' + error.message);
+                }
+            } else {
+                // Non-iOS or older iOS
+                startMotionTracking();
+            }
+        });
+
+        function startMotionTracking() {
+            if (isStreaming) return;
+            
+            window.addEventListener('devicemotion', handleMotion);
+            isStreaming = true;
+            requestPermissionBtn.textContent = '✓ Motion Enabled';
+            requestPermissionBtn.style.opacity = '0.7';
+            
+            // Keep screen awake
+            if ('wakeLock' in navigator) {
+                navigator.wakeLock.request('screen').catch(err => {
+                    console.log('Wake lock error:', err);
+                });
+            }
+        }
+
+        function handleMotion(event) {
+            if (!socket || !socket.connected || assignedSlot === -1) return;
+
+            const rotationRate = event.rotationRate;
+            if (!rotationRate) return;
+
+            // Map rotation rate to gyro axes correctly:
+            // rotationRate.alpha = rotation around Z axis (Yaw)
+            // rotationRate.beta = rotation around X axis (Pitch) 
+            // rotationRate.gamma = rotation around Y axis (Roll)
+            const gyro = {
+                x: (rotationRate.beta || 0) * sensitivity,   // Pitch
+                y: (rotationRate.gamma || 0) * sensitivity,  // Roll
+                z: (rotationRate.alpha || 0) * sensitivity   // Yaw
+            };
+
+            // Update display
+            gyroX.textContent = gyro.x.toFixed(2);
+            gyroY.textContent = gyro.y.toFixed(2);
+            gyroZ.textContent = gyro.z.toFixed(2);
+
+            // Update visualizer (Y=horizontal, X=vertical)
+            const maxOffset = 80;
+            const xPos = Math.max(-maxOffset, Math.min(maxOffset, gyro.y * 2));
+            const yPos = Math.max(-maxOffset, Math.min(maxOffset, gyro.x * 2));
+            visualizerBall.style.transform = `translate(calc(-50% + ${xPos}px), calc(-50% + ${yPos}px))`;
+
+            // Send to server
+            socket.emit('motion', {
+                timestamp: Date.now() / 1000,
+                gyro: {
+                    x: gyro.x,
+                    y: gyro.y,
+                    z: gyro.z
+                }
+            });
+        }
+
+        // Initialize connection
+        connect();
+    </script>
+</body>
+</html>
